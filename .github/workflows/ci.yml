@@ -9,7 +9,7 @@ on:
     types: [ created ]
 
 env:
-  ARTIFACT_NAME: tictactoe-${{ runner.os }}
+  ARTIFACT_NAME: tictactoe-${{ matrix.os }}
 
 jobs:
   build-test-deploy:
@@ -33,7 +33,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        if [ "$RUNNER_OS" == "Linux" ]; then
+        if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
           sudo apt-get update
           sudo apt-get install -y build-essential zip
         else
@@ -54,21 +54,21 @@ jobs:
 
     # ===== ARTIFACT PREPARATION =====
     - name: Prepare Linux artifact
-      if: runner.os == 'Linux'
+      if: matrix.os == 'ubuntu-latest'
       run: |
         mkdir -p package
         cp build/tictactoe package/
         cp -r resources package/
-        zip -r $ARTIFACT_NAME.zip package/
+        zip -r ${{ env.ARTIFACT_NAME }}.zip package/
 
     - name: Prepare Windows artifact
-      if: runner.os == 'Windows'
+      if: matrix.os == 'windows-latest'
       run: |
         mkdir -p package
         windeployqt build/Release/tictactoe.exe --release
         cp build/Release/tictactoe.exe package/
         cp build/Release/*.dll package/
-        7z a $ARTIFACT_NAME.zip package/*
+        7z a ${{ env.ARTIFACT_NAME }}.zip package/*
 
     # ===== ARTIFACT UPLOAD (FALLBACK METHOD) =====
     - name: Upload artifact via API
@@ -79,7 +79,7 @@ jobs:
           -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
           -H "Accept: application/vnd.github.v3+json" \
           "https://api.github.com/repos/${{ github.repository }}/actions/artifacts" \
-          -d '{"name":"'"$ARTIFACT_NAME"'","size":'"$(stat -c%s "$ARTIFACT_NAME.zip")"'}')
+          -d '{"name":"'"${{ env.ARTIFACT_NAME }}"'","size":'"$(stat -c%s "${{ env.ARTIFACT_NAME }}.zip")"'}')
         
         UPLOAD_URL=$(echo "$RESPONSE" | jq -r '.upload_url' | sed "s/{.*}//")
         
@@ -87,18 +87,18 @@ jobs:
         curl -X PUT \
           -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
           -H "Content-Type: application/zip" \
-          --data-binary @"$ARTIFACT_NAME.zip" \
-          "$UPLOAD_URL?name=$ARTIFACT_NAME.zip"
+          --data-binary @"${{ env.ARTIFACT_NAME }}.zip" \
+          "$UPLOAD_URL?name=${{ env.ARTIFACT_NAME }}.zip"
 
     # ===== RELEASE DEPLOYMENT =====
     - name: Create release assets
       if: github.event_name == 'release'
       shell: bash
       run: |
-        if [ "$RUNNER_OS" == "Linux" ]; then
-          mv $ARTIFACT_NAME.zip tictactoe-linux.zip
+        if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
+          mv ${{ env.ARTIFACT_NAME }}.zip tictactoe-linux.zip
         else
-          mv $ARTIFACT_NAME.zip tictactoe-windows.zip
+          mv ${{ env.ARTIFACT_NAME }}.zip tictactoe-windows.zip
         fi
 
     - name: Publish release
