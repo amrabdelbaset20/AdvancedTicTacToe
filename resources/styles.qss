@@ -1,0 +1,134 @@
+/* Base Styles */
+QWidget {
+    background-color: #3a516e;
+    color: #ecf0f1;
+    font-family: 'Segoe UI', Arial, sans-serif;
+}
+
+/* Title Styles */
+.title {
+    font-size: 32px;
+    font-weight: bold;
+    color: #f1c40f;
+    qproperty-alignment: AlignCenter;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+    font-family: 'Arial Rounded MT Bold', 'Arial', sans-serif;
+}
+
+/* Status Label */
+#statusLabel {
+    font-size: 24px;
+    font-weight: bold;
+    color: #f1c40f;
+    qproperty-alignment: AlignCenter;
+    margin-bottom: 10px;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+    font-family: 'Arial Rounded MT Bold', 'Arial', sans-serif;
+}
+
+/* Game Board Buttons */
+#gameWindow QPushButton {
+    font-size: 48px;
+    min-width: 100px;
+    min-height: 100px;
+    background-color: #34495e;
+    border: 2px solid #2c3e50;
+    color: #ecf0f1;
+    border-radius: 10px;
+    font-family: 'Comic Sans MS', cursive;
+}
+
+#gameWindow QPushButton[text="X"] {
+    color: #e74c3c;
+    font-weight: bold;
+}
+
+#gameWindow QPushButton[text="O"] {
+    color: #3498db;
+    font-weight: bold;
+}
+
+#gameWindow QPushButton:hover {
+    background-color: #3d566e;
+    border: 2px solid #3498db;
+}
+
+/* Combo Boxes */
+QComboBox {
+    padding: 5px;
+    border: 2px solid #3498db;
+    border-radius: 5px;
+    background-color: #34495e;
+    color: #ecf0f1;
+    font-size: 14px;
+    min-width: 120px;
+}
+
+QComboBox::drop-down {
+    border: none;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #34495e;
+    color: #ecf0f1;
+    selection-background-color: #3498db;
+    border: 1px solid #2c3e50;
+}
+
+/* Action Buttons */
+#newGameButton, #menuButton, #historyButton {
+    padding: 10px 20px;
+    min-height: 40px;
+    border-radius: 10px;
+    font-weight: bold;
+    color: white;
+    border: 2px solid;
+    margin: 5px;
+    font-size: 16px;
+    font-family: 'Arial Rounded MT Bold', 'Arial', sans-serif;
+}
+
+#newGameButton {
+    background-color: #2ecc71;
+    border-color: #27ae60;
+}
+
+#menuButton {
+    background-color: #e74c3c;
+    border-color: #c0392b;
+}
+
+#historyButton {
+    background-color: #9b59b6;
+    border-color: #8e44ad;
+}
+
+/* Hover States */
+#newGameButton:hover {
+    background-color: #27ae60;
+    border-color: #219955;
+}
+
+#menuButton:hover {
+    background-color: #c0392b;
+    border-color: #a5281b;
+}
+
+#historyButton:hover {
+    background-color: #8e44ad;
+    border-color: #7d3c98;
+}
+
+/* Game Window */
+#gameWindow {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                               stop:0 #3a516e, stop:1 #425b7a);
+    padding: 20px;
+    border-radius: 15px;
+}
+
+/* Labels */
+QLabel {
+    font-size: 16px;
+    color: #ecf0f1;
+}

@@ -1,0 +1,13 @@
+# Qt Creator
+*.pro.user
+*.autosave
+
+# Build directories
+build/
+*.build/
+Debug/
+Release/
+
+# Executables
+*.exe
+*.app
