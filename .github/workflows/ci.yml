@@ -5,21 +5,26 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
+  release:
+    types: [ created ]
 
 jobs:
   build-test-deploy:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ ubuntu-latest, windows-latest ]
         qt-version: [ '6.5.0' ]
         include:
           - os: ubuntu-latest
             build-dir: build
-            executable: tictactoe  # Match your actual executable name
+            executable: AdvancedTicTacToe
+            artifact_name: AdvancedTicTacToe-linux
           - os: windows-latest
             build-dir: build/Release
             executable: AdvancedTicTacToe.exe
+            artifact_name: AdvancedTicTacToe-windows
 
     steps:
     # ===== SETUP =====
@@ -48,35 +53,50 @@ jobs:
     - name: Build project
       run: cmake --build build --config Release
 
-    - name: Debug build files
+    - name: Verify executable exists
       run: |
         echo "Build directory contents:"
         ls -la ${{ matrix.build-dir }}
-        echo "Looking for executable: ${{ matrix.executable }}"
-        find ${{ matrix.build-dir }} -name "${{ matrix.executable }}"
+        test -f ${{ matrix.build-dir }}/${{ matrix.executable }}
 
     # ===== ARTIFACT PREPARATION =====
     - name: Prepare artifact
       run: |
         mkdir -p package
-        EXE_PATH=$(find ${{ matrix.build-dir }} -name "${{ matrix.executable }}" | head -1)
-        if [ -z "$EXE_PATH" ]; then
-          echo "Error: Executable not found!"
-          exit 1
-        fi
-        cp "$EXE_PATH" package/
-        
+        cp ${{ matrix.build-dir }}/${{ matrix.executable }} package/
         if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
           cp -r resources package/
-          zip -r tictactoe-${{ matrix.os }}.zip package/
+          zip -r ${{ matrix.artifact_name }}.zip package/
         else
           windeployqt package/${{ matrix.executable }} --release
-          7z a tictactoe-${{ matrix.os }}.zip package/*
+          cp ${{ matrix.build-dir }}/*.dll package/
+          7z a ${{ matrix.artifact_name }}.zip package/*
         fi
 
     # ===== ARTIFACT UPLOAD =====
-    - name: Upload artifact
-      uses: actions/upload-artifact@v3
+    - name: Upload artifact via API
+      shell: bash
+      run: |
+        # Get upload URL
+        RESPONSE=$(curl -s -X POST \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          -H "Accept: application/vnd.github.v3+json" \
+          "https://api.github.com/repos/${{ github.repository }}/actions/artifacts" \
+          -d '{"name":"'"${{ matrix.artifact_name }}"'","size":'"$(stat -c%s "${{ matrix.artifact_name }}.zip")"'}')
+        
+        UPLOAD_URL=$(echo "$RESPONSE" | jq -r '.upload_url' | sed "s/{.*}//")
+        
+        # Upload file
+        curl -X PUT \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          -H "Content-Type: application/zip" \
+          --data-binary @"${{ matrix.artifact_name }}.zip" \
+          "$UPLOAD_URL?name=${{ matrix.artifact_name }}.zip"
+
+    # ===== RELEASE DEPLOYMENT =====
+    - name: Publish release
+      if: github.event_name == 'release'
+      uses: softprops/action-gh-release@v1
       with:
-        name: tictactoe-${{ matrix.os }}
-        path: tictactoe-${{ matrix.os }}.zip
+        files: |
+          ${{ matrix.artifact_name }}.zip
