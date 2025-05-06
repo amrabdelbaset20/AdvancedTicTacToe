@@ -5,8 +5,6 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
-  release:
-    types: [ created ]
 
 jobs:
   build-test-deploy:
@@ -21,10 +19,12 @@ jobs:
             build-dir: build
             executable: AdvancedTicTacToe
             artifact_name: AdvancedTicTacToe-linux
+            shell: bash
           - os: windows-latest
             build-dir: build/Release
             executable: AdvancedTicTacToe.exe
             artifact_name: AdvancedTicTacToe-windows
+            shell: pwsh
 
     steps:
     # ===== SETUP =====
@@ -38,65 +38,69 @@ jobs:
         cached: true
 
     - name: Install dependencies
+      shell: ${{ matrix.shell }}
       run: |
-        if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
+        if ("${{ matrix.os }}" -eq "ubuntu-latest") {
           sudo apt-get update
           sudo apt-get install -y build-essential zip
-        else
+        } else {
           choco install cmake 7zip -y
-        fi
+        }
 
     # ===== BUILD & TEST =====
     - name: Configure CMake
+      shell: ${{ matrix.shell }}
       run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_TESTS=ON
 
     - name: Build project
+      shell: ${{ matrix.shell }}
       run: cmake --build build --config Release
 
     - name: Verify executable exists
+      shell: ${{ matrix.shell }}
       run: |
-        echo "Build directory contents:"
-        ls -la ${{ matrix.build-dir }}
-        test -f ${{ matrix.build-dir }}/${{ matrix.executable }}
+        Write-Output "Build directory contents:"
+        ls ${{ matrix.build-dir }}
+        if (!(Test-Path "${{ matrix.build-dir }}/${{ matrix.executable }}")) {
+          Write-Error "Executable not found!"
+          exit 1
+        }
 
     # ===== ARTIFACT PREPARATION =====
     - name: Prepare artifact
+      shell: ${{ matrix.shell }}
       run: |
         mkdir -p package
-        cp ${{ matrix.build-dir }}/${{ matrix.executable }} package/
-        if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
-          cp -r resources package/
+        Copy-Item "${{ matrix.build-dir }}/${{ matrix.executable }}" package/
+        if ("${{ matrix.os }}" -eq "ubuntu-latest") {
+          Copy-Item -Recurse resources package/
           zip -r ${{ matrix.artifact_name }}.zip package/
-        else
+        } else {
           windeployqt package/${{ matrix.executable }} --release
-          cp ${{ matrix.build-dir }}/*.dll package/
+          Copy-Item "${{ matrix.build-dir }}/*.dll" package/
           7z a ${{ matrix.artifact_name }}.zip package/*
-        fi
+        }
 
     # ===== ARTIFACT UPLOAD =====
     - name: Upload artifact via API
       shell: bash
       run: |
-        # Get upload URL
+        # Get upload URL (works for both Linux and Windows)
         RESPONSE=$(curl -s -X POST \
           -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
           -H "Accept: application/vnd.github.v3+json" \
           "https://api.github.com/repos/${{ github.repository }}/actions/artifacts" \
-          -d '{"name":"'"${{ matrix.artifact_name }}"'","size":'"$(stat -c%s "${{ matrix.artifact_name }}.zip")"'}')
+          -d '{"name":"'"${{ matrix.artifact_name }}"'","size":'"$(stat -c%s "${{ matrix.artifact_name }}.zip" 2>/dev/null || echo 0)"'}')
         
         UPLOAD_URL=$(echo "$RESPONSE" | jq -r '.upload_url' | sed "s/{.*}//")
         
-        # Upload file
+        if [ -z "$UPLOAD_URL" ]; then
+          echo "Failed to get upload URL"
+          exit 1
+        fi
+        
         curl -X PUT \
           -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
           -H "Content-Type: application/zip" \
           --data-binary @"${{ matrix.artifact_name }}.zip" \
-          "$UPLOAD_URL?name=${{ matrix.artifact_name }}.zip"
-
-    # ===== RELEASE DEPLOYMENT =====
-    - name: Publish release
-      if: github.event_name == 'release'
-      uses: softprops/action-gh-release@v1
-      with:
-        files: |
-          ${{ matrix.artifact_name }}.zip
+          "$UPLOAD_URL?name=${{ matrix.artifact_name }}.zip" || (echo "Upload failed"; exit 1)
