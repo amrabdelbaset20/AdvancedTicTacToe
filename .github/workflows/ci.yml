@@ -38,48 +38,48 @@ jobs:
         cached: true
 
     - name: Install dependencies
-      shell: ${{ matrix.shell }}
+      shell: bash
       run: |
-        if ("${{ matrix.os }}" -eq "ubuntu-latest") {
+        if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
           sudo apt-get update
           sudo apt-get install -y build-essential zip
-        } else {
+        else
           choco install cmake 7zip -y
-        }
+        fi
 
     # ===== BUILD & TEST =====
     - name: Configure CMake
-      shell: ${{ matrix.shell }}
+      shell: bash
       run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_TESTS=ON
 
     - name: Build project
-      shell: ${{ matrix.shell }}
+      shell: bash
       run: cmake --build build --config Release
 
     - name: Verify executable exists
-      shell: ${{ matrix.shell }}
+      shell: bash
       run: |
-        Write-Output "Build directory contents:"
+        echo "Build directory contents:"
         ls ${{ matrix.build-dir }}
-        if (!(Test-Path "${{ matrix.build-dir }}/${{ matrix.executable }}")) {
-          Write-Error "Executable not found!"
+        if [ ! -f "${{ matrix.build-dir }}/${{ matrix.executable }}" ]; then
+          echo "Executable not found!"
           exit 1
-        }
+        fi
 
     # ===== ARTIFACT PREPARATION =====
     - name: Prepare artifact
-      shell: ${{ matrix.shell }}
+      shell: bash
       run: |
         mkdir -p package
-        Copy-Item "${{ matrix.build-dir }}/${{ matrix.executable }}" package/
-        if ("${{ matrix.os }}" -eq "ubuntu-latest") {
-          Copy-Item -Recurse resources package/
+        cp "${{ matrix.build-dir }}/${{ matrix.executable }}" package/
+        if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+          cp -r resources package/
           zip -r ${{ matrix.artifact_name }}.zip package/
-        } else {
+        else
           windeployqt package/${{ matrix.executable }} --release
-          Copy-Item "${{ matrix.build-dir }}/*.dll" package/
+          cp "${{ matrix.build-dir }}"/*.dll package/
           7z a ${{ matrix.artifact_name }}.zip package/*
-        }
+        fi
 
     # ===== ARTIFACT UPLOAD =====
     - name: Upload artifact via API
