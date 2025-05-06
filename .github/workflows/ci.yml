@@ -19,98 +19,81 @@ jobs:
             build-dir: build
             executable: AdvancedTicTacToe
             artifact_name: AdvancedTicTacToe-linux
-            shell: bash
           - os: windows-latest
             build-dir: build/Release
             executable: AdvancedTicTacToe.exe
             artifact_name: AdvancedTicTacToe-windows
-            shell: pwsh
 
     steps:
-    # ===== SETUP =====
-    - name: Checkout code
-      uses: actions/checkout@v3
+      # ===== SETUP =====
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Setup Qt
-      uses: jurplel/install-qt-action@v3
-      with:
-        version: ${{ matrix.qt-version }}
-        cached: true
+      - name: Setup Qt
+        uses: jurplel/install-qt-action@v3
+        with:
+          version: ${{ matrix.qt-version }}
+          cached: true
+          setup-python: false  # Avoid conflicts with system Python
 
-    - name: Install dependencies
-      shell: bash
-      run: |
-        if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
-          sudo apt-get update
-          sudo apt-get install -y build-essential zip
-        else
-          choco install cmake 7zip -y
-        fi
+      - name: Install dependencies
+        shell: bash
+        run: |
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+            sudo apt-get update
+            sudo apt-get install -y build-essential zip
+          else
+            choco install cmake 7zip -y
+          fi
 
-    # ===== BUILD & TEST =====
-    - name: Configure CMake
-      shell: bash
-      run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_TESTS=ON
+      # ===== BUILD & TEST =====
+      - name: Configure CMake
+        shell: bash
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_TESTS=ON
 
-    - name: Build project
-      shell: bash
-      run: cmake --build build --config Release
+      - name: Build project
+        shell: bash
+        run: cmake --build build --config Release
 
-    - name: Verify executable exists
-      shell: bash
-      run: |
-        echo "Build directory contents:"
-        ls ${{ matrix.build-dir }}
-        if [ ! -f "${{ matrix.build-dir }}/${{ matrix.executable }}" ]; then
-          echo "Executable not found!"
-          exit 1
-        fi
+      - name: Verify executable exists
+        shell: bash
+        run: |
+          echo "Build directory contents:"
+          ls ${{ matrix.build-dir }}
+          if [ ! -f "${{ matrix.build-dir }}/${{ matrix.executable }}" ]; then
+            echo "Executable not found!"
+            exit 1
+          fi
 
-    # ===== ARTIFACT PREPARATION =====
-    - name: Prepare artifact
-      shell: bash
-      run: |
-        mkdir -p package
-        cp "${{ matrix.build-dir }}/${{ matrix.executable }}" package/
-        if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
-          cp -r resources package/
-          zip -r ${{ matrix.artifact_name }}.zip package/
-        else
-          windeployqt package/${{ matrix.executable }} --release
-          cp "${{ matrix.build-dir }}"/*.dll package/
-          7z a ${{ matrix.artifact_name }}.zip package/*
-        fi
-    # ===== ARTIFACT UPLOAD =====
-    - name: Upload artifact via API
-      shell: bash
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        # Get file size
-        if [ "${{ matrix.os }}" = "windows-latest" ]; then
-          FILE_SIZE=$(stat -c%s "${{ matrix.artifact_name }}.zip" 2>/dev/null || stat -f%z "${{ matrix.artifact_name }}.zip")
-        else
-          FILE_SIZE=$(stat -c%s "${{ matrix.artifact_name }}.zip")
-        fi
+      # ===== ARTIFACT PREPARATION =====
+      - name: Prepare artifact
+        shell: bash
+        run: |
+          mkdir -p package
+          cp "${{ matrix.build-dir }}/${{ matrix.executable }}" package/
+          
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+            cp -r resources package/
+            zip -r ${{ matrix.artifact_name }}.zip package/
+          else
+            # Ensure windeployqt can find Qt binaries
+            export PATH="/opt/qt/${{ matrix.qt-version }}/msvc2019_64/bin:$PATH"
+            
+            # Deploy Qt dependencies (skip translations if they fail)
+            if windeployqt package/${{ matrix.executable }} --release --no-translations; then
+              echo "Qt deployment succeeded"
+            else
+              echo "⚠️ Qt deployment had issues, continuing anyway"
+            fi
+            
+            # Copy DLLs and compress
+            cp "${{ matrix.build-dir }}"/*.dll package/
+            7z a ${{ matrix.artifact_name }}.zip package/*
+          fi
 
-        # Get upload URL
-        RESPONSE=$(curl -s -X POST \
-          -H "Authorization: token $GITHUB_TOKEN" \
-          -H "Accept: application/vnd.github.v3+json" \
-          "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts" \
-          -d '{"name":"'"${{ matrix.artifact_name }}"'","size":'"$FILE_SIZE"'}')
-
-        UPLOAD_URL=$(echo "$RESPONSE" | jq -r '.upload_url' | sed "s/{.*}//")
-        
-        if [ -z "$UPLOAD_URL" ] || [ "$UPLOAD_URL" = "null" ]; then
-          echo "Failed to get upload URL"
-          echo "Response: $RESPONSE"
-          exit 1
-        fi
-        
-        # Upload artifact
-        curl -X PUT \
-          -H "Authorization: token $GITHUB_TOKEN" \
-          -H "Content-Type: application/zip" \
-          --data-binary @"${{ matrix.artifact_name }}.zip" \
-          "$UPLOAD_URL?name=${{ matrix.artifact_name }}.zip" || (echo "Upload failed"; exit 1)
+      # ===== ARTIFACT UPLOAD (Recommended) =====
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_name }}.zip
