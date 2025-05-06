@@ -13,7 +13,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ ubuntu-latest, windows-latest ]
-        qt-version: [ '6.5.0' ]
+        qt-version: [ '6.8.3' ]
         build-type: [ Release ]  # Only build Release to simplify
 
     steps:
