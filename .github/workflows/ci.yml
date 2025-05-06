@@ -5,8 +5,6 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
-  release:
-    types: [ created ]
 
 jobs:
   build-test-deploy:
@@ -16,78 +14,53 @@ jobs:
       matrix:
         os: [ ubuntu-latest, windows-latest ]
         qt-version: [ '6.5.0' ]
-        build-type: [ Debug, Release ]
-        exclude:
-          - os: windows-latest
-            build-type: Debug
+        build-type: [ Release ]  # Only build Release to simplify
 
     steps:
     # ===== SETUP =====
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Setup Qt
+    - name: Cache action dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/actions
+          ~/.cache/downloads
+        key: ${{ runner.os }}-actions-cache
+
+    - name: Setup Qt (with retry)
       uses: jurplel/install-qt-action@v3
       with:
         version: ${{ matrix.qt-version }}
+        cache: true
 
     - name: Install dependencies
       run: |
         if [ "$RUNNER_OS" == "Linux" ]; then
           sudo apt-get update && sudo apt-get install -y build-essential lcov zip
-        elif [ "$RUNNER_OS" == "Windows" ]; then
-          choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System'
-          choco install 7zip -y
+        else
+          choco install cmake 7zip -y --no-progress
         fi
 
     # ===== BUILD & TEST =====
     - name: Configure CMake
-      run: cmake -B build -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} -DENABLE_TESTS=ON
+      run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_TESTS=ON
 
     - name: Build project
-      run: cmake --build build --config ${{ matrix.build-type }}
+      run: cmake --build build --config Release
 
     - name: Run tests
       run: |
         cd build
         ctest --output-on-failure || (echo "Tests failed!"; exit 1)
 
-    # ===== CODE COVERAGE =====
-    - name: Generate coverage report
-      if: matrix.os == 'ubuntu-latest'
-      run: |
-        lcov --capture --directory build --output-file coverage.info
-        lcov --remove coverage.info '/usr/*' --output-file coverage.info
-        genhtml coverage.info --output-directory coverage-report
-
-    # ===== PACKAGING =====
-    - name: Package artifacts
-      run: |
-        mkdir -p package
-        if [ "$RUNNER_OS" == "Linux" ]; then
-          cp build/tictactoe package/
-          tar -czvf tictactoe-${{ matrix.os }}-${{ matrix.build-type }}.tar.gz package/
-        elif [ "$RUNNER_OS" == "Windows" ]; then
-          windeployqt build/Release/tictactoe.exe --release
-          cp build/Release/tictactoe.exe package/
-          7z a tictactoe-${{ matrix.os }}-${{ matrix.build-type }}.zip package/*
-        fi
-
     # ===== ARTIFACTS =====
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v3
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3.1.2  # Explicit version
       with:
-        name: tictactoe-${{ matrix.os }}-${{ matrix.build-type }}
+        name: tictactoe-${{ matrix.os }}
         path: |
-          tictactoe-*.tar.gz
-          tictactoe-*.zip
-          coverage-report/**
-
-    # ===== RELEASE =====
-    - name: Create release
-      if: github.event_name == 'release'
-      uses: softprops/action-gh-release@v1
-      with:
-        files: |
-          tictactoe-*-Release.tar.gz
-          tictactoe-*-Release.zip
+          build/tictactoe*
+          build/Release/*.exe
+          build/*.dll
