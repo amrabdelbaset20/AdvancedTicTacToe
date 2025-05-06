@@ -73,16 +73,31 @@ jobs:
           cp "${{ matrix.build-dir }}/${{ matrix.executable }}" package/
           
           if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+            # Linux packaging
             cp -r resources package/
             zip -r ${{ matrix.artifact_name }}.zip package/
           else
-            export PATH="/opt/qt/${{ matrix.qt-version }}/msvc2019_64/bin:$PATH"
+            # Windows packaging
+            echo "Setting up Qt paths..."
+            export QT_PATH=$(find /opt/qt -name "msvc2019_64" -type d | head -1)
+            export PATH="$QT_PATH/bin:$PATH"
+            
+            echo "Running windeployqt..."
             if windeployqt package/${{ matrix.executable }} --release --no-translations; then
               echo "Qt deployment successful"
             else
               echo "Warning: Qt deployment had issues, continuing anyway"
             fi
-            cp "${{ matrix.build-dir }}"/*.dll package/
+            
+            echo "Copying additional dependencies..."
+            # Copy DLLs only if they exist
+            if ls "${{ matrix.build-dir }}"/*.dll 1> /dev/null 2>&1; then
+              cp "${{ matrix.build-dir }}"/*.dll package/
+            else
+              echo "No additional DLLs found to copy"
+            fi
+            
+            echo "Creating final zip..."
             7z a ${{ matrix.artifact_name }}.zip package/*
           fi
 
