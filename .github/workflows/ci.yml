@@ -1,0 +1,42 @@
+name: CI/CD Pipeline
+
+on: 
+  push:
+    branches: [ master ]  # or 'main' if you use main branch
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build-and-test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        qt-version: ['6.5.0']
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Setup Qt
+      uses: jurplel/install-qt-action@v3
+      with:
+        version: ${{ matrix.qt-version }}
+    
+    - name: Configure CMake
+      run: cmake -B build -S .
+    
+    - name: Build project
+      run: cmake --build build --config Release
+    
+    - name: Run tests
+      run: |
+        cd build
+        ctest --output-on-failure
+        
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: test-results-${{ matrix.os }}
+        path: build/Testing/**/*.xml
