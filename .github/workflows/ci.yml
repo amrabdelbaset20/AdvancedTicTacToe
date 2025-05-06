@@ -10,32 +10,42 @@ jobs:
   build-test-deploy:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ ubuntu-latest, windows-latest ]
         qt-version: [ '6.5.0' ]
+        build-type: [ Release ]  # Only build Release to simplify
 
     steps:
     # ===== SETUP =====
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Setup Qt
+    - name: Cache action dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/actions
+          ~/.cache/downloads
+        key: ${{ runner.os }}-actions-cache
+
+    - name: Setup Qt (with retry)
       uses: jurplel/install-qt-action@v3
       with:
         version: ${{ matrix.qt-version }}
-        cached: true
+        cache: true
 
     - name: Install dependencies
       run: |
         if [ "$RUNNER_OS" == "Linux" ]; then
-          sudo apt-get update && sudo apt-get install -y build-essential
+          sudo apt-get update && sudo apt-get install -y build-essential lcov zip
         else
-          choco install cmake -y
+          choco install cmake 7zip -y --no-progress
         fi
 
     # ===== BUILD & TEST =====
     - name: Configure CMake
-      run: cmake -B build -DENABLE_TESTS=ON
+      run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_TESTS=ON
 
     - name: Build project
       run: cmake --build build --config Release
@@ -43,22 +53,14 @@ jobs:
     - name: Run tests
       run: |
         cd build
-        ctest --output-on-failure
+        ctest --output-on-failure || (echo "Tests failed!"; exit 1)
 
     # ===== ARTIFACTS =====
-    - name: List files for debugging
-      run: ls -R build
-
-    - name: Upload artifacts (Alternative Method)
-      shell: bash
-      run: |
-        if [ "$RUNNER_OS" == "Linux" ]; then
-          zip -r tictactoe-linux.zip build/
-        else
-          7z a tictactoe-windows.zip build/Release/
-        fi
-        curl -X POST \
-          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-          -H "Content-Type: application/zip" \
-          --data-binary @tictactoe-$RUNNER_OS.zip \
-          "https://uploads.github.com/repos/${{ github.repository }}/actions/artifacts?name=tictactoe-$RUNNER_OS"
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3.1.2  # Explicit version
+      with:
+        name: tictactoe-${{ matrix.os }}
+        path: |
+          build/tictactoe*
+          build/Release/*.exe
+          build/*.dll
