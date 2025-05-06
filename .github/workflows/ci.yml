@@ -8,9 +8,6 @@ on:
   release:
     types: [ created ]
 
-env:
-  ARTIFACT_NAME: tictactoe-${{ matrix.os }}
-
 jobs:
   build-test-deploy:
     runs-on: ${{ matrix.os }}
@@ -19,6 +16,11 @@ jobs:
       matrix:
         os: [ ubuntu-latest, windows-latest ]
         qt-version: [ '6.5.0' ]
+        include:
+          - os: ubuntu-latest
+            artifact_name: tictactoe-linux
+          - os: windows-latest
+            artifact_name: tictactoe-windows
 
     steps:
     # ===== SETUP =====
@@ -59,7 +61,7 @@ jobs:
         mkdir -p package
         cp build/tictactoe package/
         cp -r resources package/
-        zip -r ${{ env.ARTIFACT_NAME }}.zip package/
+        zip -r ${{ matrix.artifact_name }}.zip package/
 
     - name: Prepare Windows artifact
       if: matrix.os == 'windows-latest'
@@ -68,7 +70,7 @@ jobs:
         windeployqt build/Release/tictactoe.exe --release
         cp build/Release/tictactoe.exe package/
         cp build/Release/*.dll package/
-        7z a ${{ env.ARTIFACT_NAME }}.zip package/*
+        7z a ${{ matrix.artifact_name }}.zip package/*
 
     # ===== ARTIFACT UPLOAD (FALLBACK METHOD) =====
     - name: Upload artifact via API
@@ -79,7 +81,7 @@ jobs:
           -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
           -H "Accept: application/vnd.github.v3+json" \
           "https://api.github.com/repos/${{ github.repository }}/actions/artifacts" \
-          -d '{"name":"'"${{ env.ARTIFACT_NAME }}"'","size":'"$(stat -c%s "${{ env.ARTIFACT_NAME }}.zip")"'}')
+          -d '{"name":"'"${{ matrix.artifact_name }}"'","size":'"$(stat -c%s "${{ matrix.artifact_name }}.zip")"'}')
         
         UPLOAD_URL=$(echo "$RESPONSE" | jq -r '.upload_url' | sed "s/{.*}//")
         
@@ -87,23 +89,13 @@ jobs:
         curl -X PUT \
           -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
           -H "Content-Type: application/zip" \
-          --data-binary @"${{ env.ARTIFACT_NAME }}.zip" \
-          "$UPLOAD_URL?name=${{ env.ARTIFACT_NAME }}.zip"
+          --data-binary @"${{ matrix.artifact_name }}.zip" \
+          "$UPLOAD_URL?name=${{ matrix.artifact_name }}.zip"
 
     # ===== RELEASE DEPLOYMENT =====
-    - name: Create release assets
-      if: github.event_name == 'release'
-      shell: bash
-      run: |
-        if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
-          mv ${{ env.ARTIFACT_NAME }}.zip tictactoe-linux.zip
-        else
-          mv ${{ env.ARTIFACT_NAME }}.zip tictactoe-windows.zip
-        fi
-
     - name: Publish release
       if: github.event_name == 'release'
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          tictactoe-*.zip
+          ${{ matrix.artifact_name }}.zip
