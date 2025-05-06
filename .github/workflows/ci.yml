@@ -40,3 +40,13 @@ jobs:
       with:
         name: test-results-${{ matrix.os }}
         path: build/Testing/**/*.xml
+- name: Create Windows Installer
+  if: matrix.os == 'windows-latest'
+  run: |
+    windeployqt build/Release/AdvancedTicTacToe.exe
+    7z a -tzip AdvancedTicTacToe-Windows.zip build/Release/*
+
+- name: Create Linux AppImage
+  if: matrix.os == 'ubuntu-latest'
+  run: |
+    linuxdeployqt build/AdvancedTicTacToe -appimage
