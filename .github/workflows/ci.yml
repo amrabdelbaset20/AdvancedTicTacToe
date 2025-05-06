@@ -34,7 +34,7 @@ jobs:
         with:
           version: ${{ matrix.qt-version }}
           cached: true
-          setup-python: false  # Avoid conflicts with system Python
+          setup-python: false  # Prevent potential conflicts
 
       - name: Install dependencies
         shell: bash
@@ -76,24 +76,70 @@ jobs:
             cp -r resources package/
             zip -r ${{ matrix.artifact_name }}.zip package/
           else
-            # Ensure windeployqt can find Qt binaries
+            # Set PATH to include Qt binaries explicitly
             export PATH="/opt/qt/${{ matrix.qt-version }}/msvc2019_64/bin:$PATH"
             
-            # Deploy Qt dependencies (skip translations if they fail)
+            # Run windeployqt with error handling
             if windeployqt package/${{ matrix.executable }} --release --no-translations; then
-              echo "Qt deployment succeeded"
+              echo "Qt deployment successful"
             else
-              echo "⚠️ Qt deployment had issues, continuing anyway"
+              echo "Warning: Qt deployment had issues, continuing anyway"
             fi
             
-            # Copy DLLs and compress
+            # Copy necessary DLLs
             cp "${{ matrix.build-dir }}"/*.dll package/
             7z a ${{ matrix.artifact_name }}.zip package/*
           fi
 
-      # ===== ARTIFACT UPLOAD (Recommended) =====
-      - name: Upload artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: ${{ matrix.artifact_name }}
-          path: ${{ matrix.artifact_name }}.zip
+      # ===== ARTIFACT UPLOAD (API VERSION) =====
+      - name: Upload artifact via API
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Debug: Show files before upload
+          ls -lh
+
+          # Get file size (works for both Linux and Windows)
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            FILE_SIZE=$(stat -c%s "${{ matrix.artifact_name }}.zip" 2>/dev/null || stat -f%z "${{ matrix.artifact_name }}.zip")
+          else
+            FILE_SIZE=$(stat -c%s "${{ matrix.artifact_name }}.zip")
+          fi
+
+          echo "Preparing to upload ${{ matrix.artifact_name }}.zip (size: $FILE_SIZE bytes)"
+
+          # Create artifact via API
+          RESPONSE=$(curl -s -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Content-Type: application/json" \
+            "https://api.github.com/repos/$REPO/actions/artifacts" \
+            -d '{"name":"'"${{ matrix.artifact_name }}"'","size":'"$FILE_SIZE"'}')
+
+          echo "API Response: $RESPONSE"
+
+          # Extract upload URL
+          UPLOAD_URL=$(echo "$RESPONSE" | jq -r '.upload_url' | sed 's/{.*}//')
+          
+          if [ -z "$UPLOAD_URL" ] || [ "$UPLOAD_URL" = "null" ]; then
+            echo "Error: Failed to get upload URL"
+            exit 1
+          fi
+
+          echo "Uploading to: $UPLOAD_URL"
+
+          # Perform the upload
+          curl -X PUT \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Content-Type: application/zip" \
+            --data-binary @"${{ matrix.artifact_name }}.zip" \
+            "$UPLOAD_URL?name=${{ matrix.artifact_name }}.zip"
+
+          if [ $? -ne 0 ]; then
+            echo "Upload failed"
+            exit 1
+          fi
+
+          echo "Artifact uploaded successfully"
