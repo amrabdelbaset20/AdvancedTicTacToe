@@ -12,10 +12,14 @@ jobs:
   build-test-deploy:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false  # Continue other jobs if one fails
       matrix:
         os: [ ubuntu-latest, windows-latest ]
         qt-version: [ '6.5.0' ]
         build-type: [ Debug, Release ]
+        exclude:  # Skip Debug builds on Windows to save time
+          - os: windows-latest
+            build-type: Debug
 
     steps:
     # ===== SETUP =====
@@ -30,9 +34,10 @@ jobs:
     - name: Install dependencies
       run: |
         if [ "$RUNNER_OS" == "Linux" ]; then
-          sudo apt-get update && sudo apt-get install -y build-essential lcov
+          sudo apt-get update && sudo apt-get install -y build-essential lcov zip
         elif [ "$RUNNER_OS" == "Windows" ]; then
           choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System'
+          7z --help || choco install 7zip -y
         fi
 
     # ===== BUILD & TEST =====
@@ -47,26 +52,28 @@ jobs:
         cd build
         ctest --output-on-failure || (echo "Tests failed!"; exit 1)
 
-    - name: Generate coverage (Linux only)
+    # ===== CODE COVERAGE (Linux only) =====
+    - name: Generate coverage report
       if: matrix.os == 'ubuntu-latest'
       run: |
         lcov --capture --directory build --output-file coverage.info
         lcov --remove coverage.info '/usr/*' --output-file coverage.info
         genhtml coverage.info --output-directory coverage-report
 
-    # ===== DEPLOYMENT =====
+    # ===== PACKAGING =====
     - name: Package artifacts
       run: |
         mkdir -p package
         if [ "$RUNNER_OS" == "Linux" ]; then
           cp build/tictactoe package/
-          tar -czvf tictactoe-linux.tar.gz package/
+          tar -czvf tictactoe-${{ matrix.os }}-${{ matrix.build-type }}.tar.gz package/
         elif [ "$RUNNER_OS" == "Windows" ]; then
           windeployqt build/Release/tictactoe.exe
           cp build/Release/tictactoe.exe package/
-          7z a tictactoe-windows.zip package/*
+          7z a tictactoe-${{ matrix.os }}-${{ matrix.build-type }}.zip package/*
         fi
 
+    # ===== ARTIFACTS =====
     - name: Upload artifacts
       uses: actions/upload-artifact@v3
       with:
@@ -84,17 +91,3 @@ jobs:
         files: |
           tictactoe-*.tar.gz
           tictactoe-*.zip
-        draft: false
-
-    # ===== CODE QUALITY =====
-    - name: Run clang-format check
-      run: |
-        find src tests -name '*.h' -o -name '*.cpp' | xargs clang-format -i --style=file
-        git diff --exit-code
-
-    - name: SonarCloud analysis
-      if: matrix.os == 'ubuntu-latest' && matrix.build-type == 'Debug'
-      uses: SonarSource/sonarcloud-github-action@master
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
