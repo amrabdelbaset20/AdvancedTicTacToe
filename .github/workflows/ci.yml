@@ -12,12 +12,12 @@ jobs:
   build-test-deploy:
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false  # Continue other jobs if one fails
+      fail-fast: false
       matrix:
         os: [ ubuntu-latest, windows-latest ]
         qt-version: [ '6.5.0' ]
         build-type: [ Debug, Release ]
-        exclude:  # Skip Debug builds on Windows to save time
+        exclude:
           - os: windows-latest
             build-type: Debug
 
@@ -37,7 +37,7 @@ jobs:
           sudo apt-get update && sudo apt-get install -y build-essential lcov zip
         elif [ "$RUNNER_OS" == "Windows" ]; then
           choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System'
-          7z --help || choco install 7zip -y
+          choco install 7zip -y
         fi
 
     # ===== BUILD & TEST =====
@@ -52,7 +52,7 @@ jobs:
         cd build
         ctest --output-on-failure || (echo "Tests failed!"; exit 1)
 
-    # ===== CODE COVERAGE (Linux only) =====
+    # ===== CODE COVERAGE =====
     - name: Generate coverage report
       if: matrix.os == 'ubuntu-latest'
       run: |
@@ -68,13 +68,13 @@ jobs:
           cp build/tictactoe package/
           tar -czvf tictactoe-${{ matrix.os }}-${{ matrix.build-type }}.tar.gz package/
         elif [ "$RUNNER_OS" == "Windows" ]; then
-          windeployqt build/Release/tictactoe.exe
+          windeployqt build/Release/tictactoe.exe --release
           cp build/Release/tictactoe.exe package/
           7z a tictactoe-${{ matrix.os }}-${{ matrix.build-type }}.zip package/*
         fi
 
     # ===== ARTIFACTS =====
-    - name: Upload artifacts
+    - name: Upload build artifacts
       uses: actions/upload-artifact@v3
       with:
         name: tictactoe-${{ matrix.os }}-${{ matrix.build-type }}
@@ -89,5 +89,5 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          tictactoe-*.tar.gz
-          tictactoe-*.zip
+          tictactoe-*-Release.tar.gz
+          tictactoe-*-Release.zip
