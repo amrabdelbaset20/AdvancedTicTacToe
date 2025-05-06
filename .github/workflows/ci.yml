@@ -76,24 +76,19 @@ jobs:
             cp -r resources package/
             zip -r ${{ matrix.artifact_name }}.zip package/
           else
-            # Set PATH to include Qt binaries
             export PATH="/opt/qt/${{ matrix.qt-version }}/msvc2019_64/bin:$PATH"
-            
-            # Run windeployqt with error handling
             if windeployqt package/${{ matrix.executable }} --release --no-translations; then
               echo "Qt deployment successful"
             else
               echo "Warning: Qt deployment had issues, continuing anyway"
             fi
-            
-            # Copy necessary DLLs
             cp "${{ matrix.build-dir }}"/*.dll package/
             7z a ${{ matrix.artifact_name }}.zip package/*
           fi
 
       # ===== ARTIFACT UPLOAD =====
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.artifact_name }}.zip
